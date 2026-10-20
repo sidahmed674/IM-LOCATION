@@ -30,16 +30,22 @@ interface AppContextType {
   isNewRentalModalOpen: boolean;
   rentalModalMode: 'RENTAL' | 'RESERVATION';
   setRentalModalMode: (mode: 'RENTAL' | 'RESERVATION') => void;
-  openNewRentalModal: (preselectedVehicleId?: string, mode?: 'RENTAL' | 'RESERVATION', initialDate?: string) => void;
+  openNewRentalModal: (preselectedVehicleId?: string, mode?: 'RENTAL' | 'RESERVATION', initialDate?: string, initialEndDate?: string) => void;
   openNewReservationModal: (initialDate?: string) => void;
   closeNewRentalModal: () => void;
   preselectedVehicleId: string | null;
   preselectedDate: string | null;
+  preselectedEndDate: string | null;
 
   isReturnModalOpen: boolean;
   openReturnModal: (preselectedContractId?: string) => void;
   closeReturnModal: () => void;
   preselectedContractId: string | null;
+
+  // Reservation Cancellation Modal
+  reservationToCancel: RentalContract | null;
+  openCancelReservationModal: (contract: RentalContract) => void;
+  closeCancelReservationModal: () => void;
 
   contractToPrint: RentalContract | null;
   setContractToPrint: (c: RentalContract | null) => void;
@@ -95,9 +101,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [rentalModalMode, setRentalModalMode] = useState<'RENTAL' | 'RESERVATION'>('RENTAL');
   const [preselectedVehicleId, setPreselectedVehicleId] = useState<string | null>(null);
   const [preselectedDate, setPreselectedDate] = useState<string | null>(null);
+  const [preselectedEndDate, setPreselectedEndDate] = useState<string | null>(null);
 
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [preselectedContractId, setPreselectedContractId] = useState<string | null>(null);
+
+  const [reservationToCancel, setReservationToCancel] = useState<RentalContract | null>(null);
 
   const [contractToPrint, setContractToPrint] = useState<RentalContract | null>(null);
   const [invoiceToPrint, setInvoiceToPrint] = useState<Invoice | null>(null);
@@ -201,10 +210,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts(prev => prev.filter(item => item.id !== id));
   };
 
-  const openNewRentalModal = (vehicleId?: string, mode: 'RENTAL' | 'RESERVATION' = 'RENTAL', initialDate?: string) => {
+  const openNewRentalModal = (vehicleId?: string, mode: 'RENTAL' | 'RESERVATION' = 'RENTAL', initialDate?: string, initialEndDate?: string) => {
     setRentalModalMode(mode);
     setPreselectedVehicleId(vehicleId || null);
     setPreselectedDate(initialDate || null);
+    setPreselectedEndDate(initialEndDate || null);
     setIsNewRentalModalOpen(true);
   };
 
@@ -216,6 +226,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsNewRentalModalOpen(false);
     setPreselectedVehicleId(null);
     setPreselectedDate(null);
+    setPreselectedEndDate(null);
   };
 
   const openReturnModal = (contractId?: string) => {
@@ -226,6 +237,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const closeReturnModal = () => {
     setIsReturnModalOpen(false);
     setPreselectedContractId(null);
+  };
+
+  const openCancelReservationModal = (contract: RentalContract) => {
+    setReservationToCancel(contract);
+  };
+
+  const closeCancelReservationModal = () => {
+    setReservationToCancel(null);
   };
 
   return (
@@ -252,10 +271,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         closeNewRentalModal,
         preselectedVehicleId,
         preselectedDate,
+        preselectedEndDate,
         isReturnModalOpen,
         openReturnModal,
         closeReturnModal,
         preselectedContractId,
+        reservationToCancel,
+        openCancelReservationModal,
+        closeCancelReservationModal,
         contractToPrint,
         setContractToPrint,
         invoiceToPrint,

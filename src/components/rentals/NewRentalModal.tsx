@@ -8,17 +8,16 @@ import { useApp } from '../../context/AppContext';
 import { dbStore } from '../../db/store';
 import { FuelLevel, Vehicle } from '../../types';
 
-import { getTodayLocalDate, getTomorrowLocalDate, addDaysToDate } from '../../utils/dateUtils';
+import { getTodayLocalDate, getTomorrowLocalDate, addDaysToDate, formatDateDisplay } from '../../utils/dateUtils';
 
 export const NewRentalModal: React.FC = () => {
   const { 
     isNewRentalModalOpen, closeNewRentalModal, 
-    preselectedVehicleId, preselectedDate, rentalModalMode, setRentalModalMode,
+    preselectedVehicleId, preselectedDate, preselectedEndDate, rentalModalMode, setRentalModalMode,
     t, language, addToast, setContractToPrint 
   } = useApp();
 
   const allVehicles = dbStore.getVehicles();
-  const availableVehicles = allVehicles.filter(v => v.status === 'AVAILABLE' || v.id === preselectedVehicleId);
   const existingCustomers = dbStore.getCustomers();
 
   const todayStr = getTodayLocalDate();
@@ -66,13 +65,17 @@ export const NewRentalModal: React.FC = () => {
     }
     if (preselectedDate) {
       setStartDate(preselectedDate);
-      if (rentalModalMode === 'RESERVATION' || isJournee) {
+      if (preselectedEndDate) {
+        setExpectedEndDate(preselectedEndDate);
+      } else if (rentalModalMode === 'RESERVATION' || isJournee) {
         setExpectedEndDate(preselectedDate);
       } else {
         setExpectedEndDate(addDaysToDate(preselectedDate, 1));
       }
+    } else if (preselectedEndDate) {
+      setExpectedEndDate(preselectedEndDate);
     }
-  }, [rentalModalMode, preselectedDate, isNewRentalModalOpen]);
+  }, [rentalModalMode, preselectedDate, preselectedEndDate, isNewRentalModalOpen]);
 
   // Preselected vehicle handler
   useEffect(() => {
@@ -83,12 +86,15 @@ export const NewRentalModal: React.FC = () => {
         setStartKm(v.currentKm);
         setStartFuel(v.currentFuel);
       }
-    } else if (availableVehicles.length > 0 && selectedVehicleIds.length === 0) {
-      setSelectedVehicleIds([availableVehicles[0].id]);
-      setStartKm(availableVehicles[0].currentKm);
-      setStartFuel(availableVehicles[0].currentFuel);
+    } else if (allVehicles.length > 0 && selectedVehicleIds.length === 0) {
+      const firstDispo = allVehicles.find(v => v.status === 'AVAILABLE') || allVehicles[0];
+      if (firstDispo) {
+        setSelectedVehicleIds([firstDispo.id]);
+        setStartKm(firstDispo.currentKm);
+        setStartFuel(firstDispo.currentFuel);
+      }
     }
-  }, [preselectedVehicleId, availableVehicles]);
+  }, [preselectedVehicleId, allVehicles]);
 
   // Toggle vehicle in multi-selection
   const toggleVehicleSelection = (vehicleId: string) => {
@@ -148,6 +154,24 @@ export const NewRentalModal: React.FC = () => {
     if (selectedVehicleIds.length === 0) {
       addToast(language === 'ar' ? 'يرجى اختيار سيارة واحدة على الأقل' : 'Veuillez sélectionner au moins un véhicule', 'error');
       return;
+    }
+
+    const effectiveTargetEnd = isJournee ? startDate : expectedEndDate;
+
+    // Check each selected vehicle for temporal conflict
+    for (const vId of selectedVehicleIds) {
+      const schedule = dbStore.getVehicleAvailabilitySchedule(vId, startDate, effectiveTargetEnd);
+      if (!schedule.isAvailable) {
+        const vObj = dbStore.getVehicleById(vId);
+        const name = vObj ? `${vObj.brand} ${vObj.model}` : 'المركبة';
+        addToast(
+          language === 'ar'
+            ? `تنبيه: ${name} ${schedule.conflictReason || 'غير متاحة في هذه الفترة المحددة لوجود حجز مسبق'}`
+            : `Attention : ${name} ${schedule.conflictReason || 'est indisponible sur cette période'}`,
+          'error'
+        );
+        return;
+      }
     }
 
     try {
@@ -414,49 +438,88 @@ export const NewRentalModal: React.FC = () => {
             </div>
 
             {/* Vehicle Selection Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-48 overflow-y-auto p-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto p-1">
               {allVehicles.map(v => {
                 const isSelected = selectedVehicleIds.includes(v.id);
-                const isAvailable = v.status === 'AVAILABLE' || isSelected;
+                const effectiveTargetEnd = isJournee ? startDate : expectedEndDate;
+                const schedule = dbStore.getVehicleAvailabilitySchedule(v.id, startDate, effectiveTargetEnd);
+                const isOperational = v.status !== 'MAINTENANCE' && v.status !== 'INSPECTION';
+                const canSelect = isOperational && (schedule.isAvailable || isSelected);
 
                 return (
                   <div
                     key={v.id}
                     onClick={() => {
-                      if (isAvailable) toggleVehicleSelection(v.id);
+                      if (canSelect) toggleVehicleSelection(v.id);
                     }}
-                    className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all select-none ${
+                    className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all select-none ${
                       isSelected
                         ? 'border-amber-500 bg-amber-500/10 shadow-xs'
-                        : isAvailable
-                        ? 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:border-amber-400'
-                        : 'border-neutral-200 dark:border-neutral-800 opacity-40 bg-neutral-100 dark:bg-neutral-800/50 cursor-not-allowed'
+                        : canSelect
+                        ? 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:border-amber-400 cursor-pointer'
+                        : 'border-neutral-200 dark:border-neutral-800 opacity-60 bg-neutral-100 dark:bg-neutral-800/50 cursor-not-allowed'
                     }`}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
-                        isSelected ? 'bg-amber-500 border-amber-500 text-neutral-950' : 'border-neutral-400'
-                      }`}>
-                        {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
+                          isSelected ? 'bg-amber-500 border-amber-500 text-neutral-950' : 'border-neutral-400'
+                        }`}>
+                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                        </div>
+
+                        <div className="truncate">
+                          <div className="font-bold text-neutral-900 dark:text-white truncate text-xs">
+                            {v.brand} {v.model}
+                          </div>
+                          <div className="font-mono text-[10px] text-neutral-500">
+                            {v.matricule}
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="truncate">
-                        <div className="font-bold text-neutral-900 dark:text-white truncate">
-                          {v.brand} {v.model}
-                        </div>
-                        <div className="font-mono text-[10px] text-neutral-500">
-                          {v.matricule}
+                      <div className="text-end shrink-0">
+                        <div className="font-mono font-bold text-amber-600 dark:text-amber-400 text-xs">
+                          {v.dailyRate.toLocaleString()} DA
                         </div>
                       </div>
                     </div>
 
-                    <div className="text-end shrink-0">
-                      <div className="font-mono font-bold text-amber-600 dark:text-amber-400">
-                        {v.dailyRate.toLocaleString()} DA
-                      </div>
-                      <div className="text-[9px] text-neutral-400">
-                        {v.status === 'AVAILABLE' ? 'Dispo' : v.status}
-                      </div>
+                    {/* Smart Reservation / Gap Badge */}
+                    <div className="mt-2 pt-1.5 border-t border-neutral-200/60 dark:border-neutral-700/60 text-[10px]">
+                      {schedule.isAvailable ? (
+                        schedule.nextUpcomingReservation ? (
+                          <div className="text-amber-600 dark:text-amber-400 flex items-center justify-between font-semibold">
+                            <span>📅 حجز قادم: {schedule.nextUpcomingReservation.startDate}</span>
+                            <span className="text-[9px] bg-amber-500/20 px-1.5 py-0.2 rounded text-amber-500">متاحة حتى {schedule.maxAllowedEndDate}</span>
+                          </div>
+                        ) : (
+                          <div className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                            <span>✓ {language === 'ar' ? 'متاحة تماماً' : 'Totalement disponible'}</span>
+                          </div>
+                        )
+                      ) : (
+                        <div className="space-y-1">
+                          <div className="text-red-500 font-semibold truncate" title={schedule.conflictReason}>
+                            ⚠️ {schedule.conflictReason}
+                          </div>
+                          {schedule.maxAllowedEndDate && schedule.maxAllowedEndDate >= startDate && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpectedEndDate(schedule.maxAllowedEndDate!);
+                                if (!selectedVehicleIds.includes(v.id)) {
+                                  toggleVehicleSelection(v.id);
+                                }
+                              }}
+                              className="w-full text-center py-0.5 px-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400 font-bold rounded text-[9px] cursor-pointer"
+                            >
+                              {language === 'ar' ? `اضبط الإرجاع على ${schedule.maxAllowedEndDate} للكراء` : `Ajuster retour au ${schedule.maxAllowedEndDate}`}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

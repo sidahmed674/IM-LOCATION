@@ -24,6 +24,7 @@ import { SettingsBackupView } from './components/settings/SettingsBackupView';
 // Modals
 import { NewRentalModal } from './components/rentals/NewRentalModal';
 import { ReturnModal } from './components/returns/ReturnModal';
+import { CancelReservationModal } from './components/rentals/CancelReservationModal';
 import { ContractPrintView } from './components/contracts/ContractPrintView';
 import { InvoicePrintView } from './components/invoices/InvoicePrintView';
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
@@ -89,6 +90,7 @@ const AppContent: React.FC = () => {
       {/* Global Interactive Modals */}
       <NewRentalModal />
       <ReturnModal />
+      <CancelReservationModal />
       <ContractPrintView />
       <InvoicePrintView />
 

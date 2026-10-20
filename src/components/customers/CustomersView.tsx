@@ -132,15 +132,22 @@ export const CustomersView: React.FC = () => {
     }
   };
 
-  const handleDelete = (id: string, name: string) => {
-    if (window.confirm(language === 'ar' ? `هل أنت متأكد من حذف العميل (${name})؟` : `Supprimer le client ${name} ?`)) {
-      try {
-        dbStore.deleteCustomer(id);
-        addToast(language === 'ar' ? 'تم حذف العميل' : 'Client supprimé', 'success');
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Erreur';
-        addToast(msg, 'error');
-      }
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+
+  const confirmDeleteCustomer = () => {
+    if (!customerToDelete) return;
+    try {
+      dbStore.deleteCustomer(customerToDelete.id);
+      addToast(
+        language === 'ar' 
+          ? `تم حذف العميل (${customerToDelete.fullName}) بنجاح` 
+          : `Client ${customerToDelete.fullName} supprimé avec succès`, 
+        'success'
+      );
+      setCustomerToDelete(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur';
+      addToast(msg, 'error');
     }
   };
 

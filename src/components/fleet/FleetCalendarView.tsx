@@ -8,7 +8,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { dbStore } from '../../db/store';
 import { RentalContract, Vehicle } from '../../types';
-import { formatLocalDate, getTodayLocalDate, formatDateDisplay, formatDateFull } from '../../utils/dateUtils';
+import { formatLocalDate, getTodayLocalDate, formatDateDisplay, formatDateFull, subtractDaysFromDate, getDaysDifference } from '../../utils/dateUtils';
 
 export const FleetCalendarView: React.FC = () => {
   const { t, language, openNewRentalModal, openReturnModal, setContractToPrint } = useApp();
@@ -135,8 +135,9 @@ export const FleetCalendarView: React.FC = () => {
     const ids = new Set<string>();
     dayRentals.forEach(r => {
       if (r.vehicleId) ids.add(r.vehicleId);
-      if (r.selectedVehicleIds && Array.isArray(r.selectedVehicleIds)) {
-        r.selectedVehicleIds.forEach(id => ids.add(id));
+      const multiIds = r.vehicleIds || r.selectedVehicleIds;
+      if (multiIds && Array.isArray(multiIds)) {
+        multiIds.forEach((id: string) => ids.add(id));
       }
       if (r.vehicleSnapshots && Array.isArray(r.vehicleSnapshots)) {
         r.vehicleSnapshots.forEach(v => ids.add(v.id));
@@ -498,8 +499,9 @@ export const FleetCalendarView: React.FC = () => {
                       // Check if vehicle is rented on this day (including multi-vehicle rentals)
                       const activeRental = rentals.find(r => {
                         if (r.status === 'CANCELLED') return false;
+                        const multiIds = r.vehicleIds || r.selectedVehicleIds;
                         const hasCar = r.vehicleId === v.id || 
-                          (r.selectedVehicleIds && r.selectedVehicleIds.includes(v.id)) ||
+                          (multiIds && multiIds.includes(v.id)) ||
                           (r.vehicleSnapshots && r.vehicleSnapshots.some(s => s.id === v.id));
                         return hasCar && (ymd >= r.startDate && ymd <= r.expectedEndDate);
                       });
@@ -781,40 +783,67 @@ export const FleetCalendarView: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-2.5 max-h-[520px] overflow-y-auto pe-1">
-                {selectedDayAvailableVehicles.map(veh => (
-                  <div
-                    key={veh.id}
-                    className="p-3.5 rounded-2xl bg-white dark:bg-neutral-800/40 border border-neutral-200 dark:border-neutral-700 flex items-center justify-between text-xs hover:border-emerald-500/50 transition-colors shadow-xs"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full bg-emerald-500 shrink-0" />
-                      <div>
-                        <div className="font-bold text-neutral-900 dark:text-white font-bukra italic text-sm">
-                          {veh.brand} {veh.model}
-                        </div>
-                        <div className="font-mono text-[11px] text-neutral-500">
-                          {veh.matricule} · <strong className="text-amber-500 font-bold">{veh.dailyRate.toLocaleString()} DZD/j</strong>
+                {selectedDayAvailableVehicles.map(veh => {
+                  const upcomingRes = dbStore.getNextUpcomingReservation(veh.id, selectedDayYMD);
+                  const maxDateBeforeRes = upcomingRes ? subtractDaysFromDate(upcomingRes.startDate, 1) : '';
+                  const hasGapBeforeRes = upcomingRes && maxDateBeforeRes >= selectedDayYMD;
+                  const daysUntil = upcomingRes ? Math.max(0, getDaysDifference(selectedDayYMD, upcomingRes.startDate)) : 0;
+
+                  return (
+                    <div
+                      key={veh.id}
+                      className="p-3.5 rounded-2xl bg-white dark:bg-neutral-800/40 border border-neutral-200 dark:border-neutral-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:border-emerald-500/50 transition-colors shadow-xs"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 rounded-full bg-emerald-500 shrink-0" />
+                        <div>
+                          <div className="font-bold text-neutral-900 dark:text-white font-bukra italic text-sm">
+                            {veh.brand} {veh.model}
+                          </div>
+                          <div className="font-mono text-[11px] text-neutral-500">
+                            {veh.matricule} · <strong className="text-amber-500 font-bold">{veh.dailyRate.toLocaleString()} DZD/j</strong>
+                          </div>
+
+                          {/* Gap notice if upcoming reservation */}
+                          {hasGapBeforeRes && (
+                            <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1.5">
+                              <span>📅 حجز قادم: {upcomingRes.startDate} ({daysUntil}j)</span>
+                              <span className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.2 rounded font-mono font-bold">
+                                شاغرة حتى {maxDateBeforeRes}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => openNewRentalModal(veh.id, 'RESERVATION', selectedDayYMD)}
-                        className="px-3 py-1.5 rounded-xl bg-purple-600/15 hover:bg-purple-600 text-purple-700 hover:text-white dark:text-purple-300 font-bold text-xs cursor-pointer transition-colors font-bukra italic"
-                      >
-                        {language === 'ar' ? 'حجز' : 'Réserver'}
-                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
+                        {hasGapBeforeRes ? (
+                          <button
+                            onClick={() => openNewRentalModal(veh.id, 'RENTAL', selectedDayYMD, maxDateBeforeRes)}
+                            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-neutral-950 font-black text-xs cursor-pointer shadow-xs font-bukra italic"
+                            title={`كراء مؤقت حتى ${maxDateBeforeRes}`}
+                          >
+                            {language === 'ar' ? `كراء حتى ${maxDateBeforeRes}` : `Louer jusqu'au ${maxDateBeforeRes}`}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => openNewRentalModal(veh.id, 'RENTAL', selectedDayYMD)}
+                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs cursor-pointer shadow-xs font-bukra italic"
+                          >
+                            {language === 'ar' ? 'كراء' : 'Louer'}
+                          </button>
+                        )}
 
-                      <button
-                        onClick={() => openNewRentalModal(veh.id, 'RENTAL', selectedDayYMD)}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs cursor-pointer shadow-xs font-bukra italic"
-                      >
-                        {language === 'ar' ? 'كراء' : 'Louer'}
-                      </button>
+                        <button
+                          onClick={() => openNewRentalModal(veh.id, 'RESERVATION', selectedDayYMD)}
+                          className="px-3 py-1.5 rounded-xl bg-purple-600/15 hover:bg-purple-600 text-purple-700 hover:text-white dark:text-purple-300 font-bold text-xs cursor-pointer transition-colors font-bukra italic"
+                        >
+                          {language === 'ar' ? 'حجز' : 'Réserver'}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

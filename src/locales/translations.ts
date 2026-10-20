@@ -77,6 +77,7 @@ export const translations = {
     // Statuses
     statusAvailable: 'متاح',
     statusReserved: 'محجوز',
+    statusReservedFuture: 'متاحة (حجز مستقبلي)',
     statusRented: 'مؤجر',
     statusReturned: 'مُعاد',
     statusInspection: 'قيد الفحص',
@@ -85,6 +86,13 @@ export const translations = {
     statusCompleted: 'مكتمل ومغلق',
     statusOverdue: 'متأخر في الإرجاع',
     statusCancelled: 'ملغى',
+    upcomingReservation: 'حجز مسبق قادم',
+    availableUntil: 'متاحة للكراء حتى',
+    rentBeforeReservation: 'كراء قبل موعد الحجز',
+    daysRemainingBeforeRes: 'يوم متبقي حتى الحجز',
+    reservationConflict: 'تعارض مع موعد حجز مسبق',
+    adjustReturnDate: 'ضبط تاريخ الإرجاع',
+    freeIntervalNotice: 'المركبة شاغرة ومتاحة للكراء حالياً قبل موعد الحجز القادم',
 
     // Vehicle terms
     matricule: 'رقم اللوحة (Matricule)',
@@ -316,6 +324,7 @@ export const translations = {
     // Statuses
     statusAvailable: 'Disponible',
     statusReserved: 'Réservé',
+    statusReservedFuture: 'Disponible (Réservation future)',
     statusRented: 'En Location',
     statusReturned: 'Restitué',
     statusInspection: 'En Inspection',
@@ -324,6 +333,13 @@ export const translations = {
     statusCompleted: 'Clôturé',
     statusOverdue: 'En retard',
     statusCancelled: 'Annulé',
+    upcomingReservation: 'Réservation à venir',
+    availableUntil: 'Disponible jusqu\'au',
+    rentBeforeReservation: 'Louer avant réservation',
+    daysRemainingBeforeRes: 'jours restants avant réservation',
+    reservationConflict: 'Conflit avec réservation',
+    adjustReturnDate: 'Ajuster date de retour',
+    freeIntervalNotice: 'Véhicule libre et disponible à la location avant la réservation',
 
     // Vehicle terms
     matricule: 'Matricule (Immatriculation)',
@@ -555,6 +571,7 @@ export const translations = {
     // Statuses
     statusAvailable: 'Available',
     statusReserved: 'Reserved',
+    statusReservedFuture: 'Available (Future Booking)',
     statusRented: 'Rented',
     statusReturned: 'Returned',
     statusInspection: 'Under Inspection',
@@ -563,6 +580,13 @@ export const translations = {
     statusCompleted: 'Completed',
     statusOverdue: 'Overdue',
     statusCancelled: 'Cancelled',
+    upcomingReservation: 'Upcoming Reservation',
+    availableUntil: 'Available until',
+    rentBeforeReservation: 'Rent before reservation',
+    daysRemainingBeforeRes: 'days remaining before reservation',
+    reservationConflict: 'Conflict with reservation',
+    adjustReturnDate: 'Adjust return date',
+    freeIntervalNotice: 'Vehicle is currently free and available before the upcoming reservation',
 
     // Vehicle terms
     matricule: 'Plate Number (Matricule)',

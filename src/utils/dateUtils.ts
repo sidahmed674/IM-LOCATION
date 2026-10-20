@@ -54,3 +54,18 @@ export const formatDateFull = (ymd: string, locale: string = 'fr'): string => {
     year: 'numeric'
   });
 };
+
+export const getDaysDifference = (fromYmd: string, toYmd: string): number => {
+  const from = parseLocalDate(fromYmd);
+  const to = parseLocalDate(toYmd);
+  const diffMs = to.getTime() - from.getTime();
+  return Math.round(diffMs / (1000 * 60 * 60 * 24));
+};
+
+export const subtractDaysFromDate = (ymd: string, days: number): string => {
+  return addDaysToDate(ymd, -days);
+};
+
+export const datesOverlap = (start1: string, end1: string, start2: string, end2: string): boolean => {
+  return !(end1 < start2 || start1 > end2);
+};

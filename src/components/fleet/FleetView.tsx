@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Car, Plus, Filter, Gauge, Fuel, Shield, 
   FileCheck, Calendar, Wrench, Edit, Trash2, Key, X, Check,
@@ -7,6 +8,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { dbStore } from '../../db/store';
 import { Vehicle, VehicleStatus, VehicleCategory, FuelLevel } from '../../types';
+import { getTodayLocalDate, getDaysDifference, subtractDaysFromDate } from '../../utils/dateUtils';
 
 export const PRESET_CAR_PHOTOS = [
   { name: 'Renault Clio 5', url: '/src/assets/images/fleet_renault_clio_1791762677953.jpg' },
@@ -17,8 +19,12 @@ export const PRESET_CAR_PHOTOS = [
 ];
 
 export const FleetView: React.FC = () => {
-  const { t, language, openNewRentalModal, addToast } = useApp();
-  const vehicles = dbStore.getVehicles();
+  const { t, language, openNewRentalModal, addToast, storeVersion, triggerStoreRefresh } = useApp();
+  const [vehicles, setVehicles] = useState<Vehicle[]>(() => dbStore.getVehicles());
+
+  useEffect(() => {
+    setVehicles(dbStore.getVehicles());
+  }, [storeVersion]);
 
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
@@ -190,21 +196,33 @@ export const FleetView: React.FC = () => {
     }
   };
 
-  const handleDelete = (id: string, matricule: string) => {
-    if (window.confirm(language === 'ar' ? `هل أنت متأكد من حذف المركبة (${matricule})؟` : `Confirmer la suppression du véhicule ${matricule} ?`)) {
-      try {
-        dbStore.deleteVehicle(id);
-        addToast(language === 'ar' ? 'تم حذف المركبة بنجاح' : 'Véhicule supprimé avec succès', 'success');
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Erreur';
-        addToast(msg, 'error');
-      }
+  const [vehicleToDelete, setVehicleToDelete] = useState<Vehicle | null>(null);
+
+  const confirmDeleteVehicle = () => {
+    if (!vehicleToDelete) return;
+    try {
+      dbStore.deleteVehicle(vehicleToDelete.id);
+      addToast(
+        language === 'ar' 
+          ? `تم حذف المركبة (${vehicleToDelete.matricule}) بنجاح من الأسطول` 
+          : `Véhicule ${vehicleToDelete.matricule} supprimé avec succès`, 
+        'success'
+      );
+      setVehicles(dbStore.getVehicles());
+      setVehicleToDelete(null);
+      triggerStoreRefresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur';
+      addToast(msg, 'error');
     }
   };
 
   // Filter logic
   const filteredVehicles = vehicles.filter(v => {
-    const matchesStatus = statusFilter === 'ALL' || v.status === statusFilter;
+    let matchesStatus = statusFilter === 'ALL' || v.status === statusFilter;
+    if (statusFilter === 'RESERVED_FUTURE') {
+      matchesStatus = v.status === 'AVAILABLE' && !!dbStore.getNextUpcomingReservation(v.id);
+    }
     const matchesCategory = categoryFilter === 'ALL' || v.category === categoryFilter;
     const matchesSearch = 
       v.matricule.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -267,6 +285,7 @@ export const FleetView: React.FC = () => {
           {[
             { id: 'ALL', label: t.all },
             { id: 'AVAILABLE', label: t.statusAvailable },
+            { id: 'RESERVED_FUTURE', label: language === 'ar' ? 'حجوزات قادمة (متاحة الآن)' : 'Réservées à venir (Dispo)' },
             { id: 'RENTED', label: t.statusRented },
             { id: 'MAINTENANCE', label: t.statusMaintenance },
             { id: 'INSPECTION', label: t.statusInspection },
@@ -475,16 +494,67 @@ export const FleetView: React.FC = () => {
                   )}
                 </div>
 
+                {/* Upcoming Reservation Callout Banner (Car is Available Now Before Reservation Delivery!) */}
+                {(() => {
+                  const upcomingRes = dbStore.getNextUpcomingReservation(vehicle.id);
+                  const todayLocalDate = getTodayLocalDate();
+                  const hasFutureRes = vehicle.status === 'AVAILABLE' && !!upcomingRes;
+                  if (!hasFutureRes || !upcomingRes) return null;
+
+                  const daysUntilRes = Math.max(0, getDaysDifference(todayLocalDate, upcomingRes.startDate));
+                  const maxDateBeforeRes = subtractDaysFromDate(upcomingRes.startDate, 1);
+
+                  return (
+                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-1">
+                      <div className="flex items-center justify-between font-bold text-amber-800 dark:text-amber-300">
+                        <span className="flex items-center gap-1.5 font-bukra italic">
+                          <Calendar className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <span>{language === 'ar' ? `حجز قادم: ${upcomingRes.startDate}` : `Réservée le ${upcomingRes.startDate}`}</span>
+                        </span>
+                        <span className="text-[10px] bg-amber-500/20 px-2 py-0.5 rounded-full font-mono text-amber-600 dark:text-amber-400 font-bold">
+                          {daysUntilRes} {language === 'ar' ? 'يوم متبقي' : 'j restants'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold pt-0.5 border-t border-amber-500/20">
+                        <span>{language === 'ar' ? 'متاحة تماماً للكراء حتى:' : 'Libre à la location jusqu\'au :'}</span>
+                        <span className="font-mono font-bold bg-emerald-500/15 px-1.5 py-0.5 rounded border border-emerald-500/30">{maxDateBeforeRes}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Action Buttons */}
                 <div className="flex items-center gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
                   {vehicle.status === 'AVAILABLE' ? (
-                    <button
-                      onClick={() => openNewRentalModal(vehicle.id)}
-                      className="flex-1 py-1.5 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <Key className="w-3.5 h-3.5" />
-                      <span>{language === 'ar' ? 'تأجير الآن' : 'Louer'}</span>
-                    </button>
+                    (() => {
+                      const upcomingRes = dbStore.getNextUpcomingReservation(vehicle.id);
+                      const todayLocalDate = getTodayLocalDate();
+                      const maxDateBeforeRes = upcomingRes ? subtractDaysFromDate(upcomingRes.startDate, 1) : '';
+                      const canRentBeforeRes = upcomingRes && maxDateBeforeRes >= todayLocalDate;
+
+                      if (canRentBeforeRes) {
+                        return (
+                          <button
+                            onClick={() => openNewRentalModal(vehicle.id, 'RENTAL', todayLocalDate, maxDateBeforeRes)}
+                            className="flex-1 py-1.5 px-3 rounded-lg bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-neutral-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer font-bukra italic"
+                            title={language === 'ar' ? `كراء فوري حتى ${maxDateBeforeRes}` : `Louer jusqu'au ${maxDateBeforeRes}`}
+                          >
+                            <Key className="w-3.5 h-3.5" />
+                            <span>{language === 'ar' ? `كراء قبل الحجز (حتى ${maxDateBeforeRes})` : `Louer avant réservation`}</span>
+                          </button>
+                        );
+                      }
+
+                      return (
+                        <button
+                          onClick={() => openNewRentalModal(vehicle.id)}
+                          className="flex-1 py-1.5 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Key className="w-3.5 h-3.5" />
+                          <span>{language === 'ar' ? 'تأجير الآن' : 'Louer'}</span>
+                        </button>
+                      );
+                    })()
                   ) : (
                     <div className="flex-1 py-1.5 text-center text-xs font-semibold text-neutral-400 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
                       {getStatusBadge(vehicle.status)}
@@ -492,7 +562,11 @@ export const FleetView: React.FC = () => {
                   )}
 
                   <button
-                    onClick={() => handleOpenEdit(vehicle)}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenEdit(vehicle);
+                    }}
                     className="p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 transition-colors cursor-pointer"
                     title={t.edit}
                   >
@@ -500,7 +574,11 @@ export const FleetView: React.FC = () => {
                   </button>
 
                   <button
-                    onClick={() => handleDelete(vehicle.id, vehicle.matricule)}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setVehicleToDelete(vehicle);
+                    }}
                     className="p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-red-500/20 text-neutral-600 dark:text-neutral-400 hover:text-red-400 transition-colors cursor-pointer"
                     title={t.delete}
                   >
@@ -851,6 +929,64 @@ export const FleetView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Delete Confirmation Modal (In-App Modal - 100% Reliable in iFrame) */}
+      {vehicleToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-red-500">
+              <div className="p-3 rounded-2xl bg-red-500/10 text-red-500">
+                <Trash2 className="w-6 h-6 stroke-[2.5]" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-neutral-900 dark:text-white font-bukra italic">
+                  {language === 'ar' ? 'تأكيد حذف المركبة' : 'Supprimer le Véhicule'}
+                </h3>
+                <p className="text-xs text-neutral-500">
+                  {language === 'ar' ? 'سيتم إزالة المركبة نهائياً من الأسطول' : 'Cette action retirera le véhicule du parc'}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700/80 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-neutral-500">{language === 'ar' ? 'الموديل:' : 'Modèle :'}</span>
+                <span className="font-bold text-neutral-900 dark:text-white">{vehicleToDelete.brand} {vehicleToDelete.model}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral-500">{language === 'ar' ? 'رقم اللوحة:' : 'Matricule :'}</span>
+                <span className="font-mono font-bold text-amber-500">{vehicleToDelete.matricule}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral-500">{language === 'ar' ? 'الحالة الحالية:' : 'Statut :'}</span>
+                <span>{getStatusBadge(vehicleToDelete.status)}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              {language === 'ar'
+                ? 'هل أنت متأكد من رغبتك في حذف هذه السيارة؟ لا يمكن التراجع عن هذا الإجراء.'
+                : 'Êtes-vous sûr de vouloir supprimer définitivement cette voiture du système ?'}
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+              <button
+                type="button"
+                onClick={() => setVehicleToDelete(null)}
+                className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold text-xs cursor-pointer"
+              >
+                {t.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteVehicle}
+                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs cursor-pointer shadow-md shadow-red-600/20 font-bukra italic"
+              >
+                {language === 'ar' ? 'نعم، حذف نهائي' : 'Confirmer la suppression'}
+              </button>
+            </div>
           </div>
         </div>
       )}

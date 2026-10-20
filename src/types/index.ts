@@ -129,6 +129,7 @@ export interface RentalContract {
   
   // Multi-vehicle support (كراء متعدد لزبون واحد)
   vehicleIds?: string[];
+  selectedVehicleIds?: string[];
   vehicleSnapshots?: Vehicle[];
   isMultiVehicle?: boolean;
 

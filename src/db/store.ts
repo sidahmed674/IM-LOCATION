@@ -10,6 +10,7 @@ import {
   FinancialTransaction, SmartAlert, AgencySettings, DamageReportItem, 
   FuelLevel, Invoice, VehicleStatus
 } from '../types';
+import { getDaysDifference, subtractDaysFromDate } from '../utils/dateUtils';
 
 const STORAGE_KEYS = {
   VEHICLES: 'im_location_vehicles_clean_v3',
@@ -281,6 +282,7 @@ class DataStore {
 
   constructor() {
     this.loadFromStorage();
+    this.syncVehicleStatuses();
   }
 
   private loadFromStorage() {
@@ -348,6 +350,44 @@ class DataStore {
 
   private notifySubscribers() {
     this.subscribers.forEach(cb => cb());
+  }
+
+  // Synchronizes vehicle statuses based on today's active rentals and reservations
+  // If a vehicle has a future reservation (startDate > today), it remains AVAILABLE today for rental!
+  public syncVehicleStatuses() {
+    const todayStr = new Date().toISOString().split('T')[0];
+    let changed = false;
+
+    this.vehicles.forEach(v => {
+      if (v.status === 'MAINTENANCE' || v.status === 'INSPECTION') return;
+
+      // Find contracts physically active covering today
+      const activeContractToday = this.rentals.find(r => {
+        if (r.status === 'CANCELLED' || r.status === 'COMPLETED') return false;
+        const matchesCar = r.vehicleId === v.id || (r.vehicleIds && r.vehicleIds.includes(v.id));
+        if (!matchesCar) return false;
+        return r.startDate <= todayStr && (r.expectedEndDate >= todayStr || r.status === 'OVERDUE');
+      });
+
+      if (activeContractToday) {
+        const expectedStatus: VehicleStatus = activeContractToday.contractType === 'RESERVATION' ? 'RESERVED' : 'RENTED';
+        if (v.status !== expectedStatus) {
+          v.status = expectedStatus;
+          changed = true;
+        }
+      } else {
+        // No active contract covering today.
+        // Even if there is a reservation scheduled for next week or next month, the vehicle is AVAILABLE to rent now!
+        if (v.status === 'RENTED' || v.status === 'RESERVED') {
+          v.status = 'AVAILABLE';
+          changed = true;
+        }
+      }
+    });
+
+    if (changed) {
+      this.saveToStorage();
+    }
   }
 
   // WIPE ALL DATA TO ZERO (Requested: Empty database by default)
@@ -419,12 +459,31 @@ class DataStore {
   }
 
   public deleteVehicle(id: string): void {
-    const hasActiveRental = this.rentals.some(r => r.vehicleId === id && (r.status === 'ACTIVE' || r.status === 'OVERDUE'));
+    const hasActiveRental = this.rentals.some(r => 
+      (r.vehicleId === id || (r.vehicleIds && r.vehicleIds.includes(id))) && 
+      (r.status === 'ACTIVE' || r.status === 'OVERDUE')
+    );
     if (hasActiveRental) {
-      throw new Error('Impossible de supprimer un véhicule ayant un contrat de location actif');
+      throw new Error('لا يمكن حذف المركبة لوجود عقد كراء نشط أو متأخر حالياً. يرجى تسوية واسترجاع المركبة أولاً.');
     }
+
+    // Safely auto-cancel any pending reservations for this vehicle so no orphan contracts remain
+    const todayStr = new Date().toISOString().split('T')[0];
+    this.rentals.forEach(r => {
+      const matchesCar = r.vehicleId === id || (r.vehicleIds && r.vehicleIds.includes(id));
+      if (matchesCar && (r.status === 'RESERVED' || r.contractType === 'RESERVATION')) {
+        r.status = 'CANCELLED';
+        r.initialNotes = (r.initialNotes ? r.initialNotes + ' | ' : '') + '[إلغاء تلقائي: تم حذف المركبة من الأسطول]';
+        r.updatedAt = todayStr;
+      }
+    });
+
+    // Remove maintenance records for this vehicle or mark completed
+    this.maintenance = this.maintenance.filter(m => m.vehicleId !== id || m.status === 'COMPLETED');
+
     this.vehicles = this.vehicles.filter(v => v.id !== id);
     this.saveToStorage();
+    this.syncVehicleStatuses();
   }
 
   // --------------------------------------------------------------------------
@@ -641,8 +700,15 @@ class DataStore {
     };
 
     // Update statuses for all selected vehicles
-    const targetStatus: VehicleStatus = isReservation ? 'RESERVED' : 'RENTED';
+    // If it is a reservation starting in the future (startDate > todayStr), keep status as AVAILABLE
+    // so the vehicle can be rented out during the period before delivery!
+    const isFutureReservation = isReservation && data.startDate > todayStr;
+    const targetStatus: VehicleStatus = isFutureReservation 
+      ? 'AVAILABLE' 
+      : (isReservation ? 'RESERVED' : 'RENTED');
+
     resolvedVehicles.forEach(v => {
+      if (v.status === 'MAINTENANCE' || v.status === 'INSPECTION') return;
       this.updateVehicle(v.id, {
         status: targetStatus,
         currentKm: v.id === primaryVehicle.id ? data.startKm : v.currentKm,
@@ -838,7 +904,141 @@ class DataStore {
 
     this.rentals[contractIndex] = contract;
     this.saveToStorage();
+    this.syncVehicleStatuses();
     return contract;
+  }
+
+  // Cancel an existing reservation with optional advance payment refund
+  public cancelReservation(contractId: string, options?: {
+    reason?: string;
+    refundAdvance?: boolean;
+    refundAmountDzd?: number;
+    recordedBy?: string;
+  }): RentalContract {
+    const contractIndex = this.rentals.findIndex(r => r.id === contractId);
+    if (contractIndex === -1) throw new Error('Contrat / Réservation introuvable');
+    const contract = this.rentals[contractIndex];
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    contract.status = 'CANCELLED';
+    contract.updatedAt = todayStr;
+
+    if (options?.reason) {
+      contract.initialNotes = (contract.initialNotes ? contract.initialNotes + ' | ' : '') + `[إلغاء: ${options.reason}]`;
+    }
+
+    // Process optional refund of advance payment
+    const refundAmount = options?.refundAmountDzd ?? contract.advancePaymentDzd;
+    if (options?.refundAdvance && refundAmount > 0) {
+      this.transactions.unshift({
+        id: `tx-${Date.now()}`,
+        type: 'EXPENSE_OTHER',
+        amountDzd: refundAmount,
+        relatedContractId: contract.id,
+        relatedVehicleId: contract.vehicleId,
+        description: `استرجاع عربون حجز ملغى رقم ${contract.contractNumber} (${contract.customerSnapshot?.fullName || 'الزبون'})`,
+        paymentMethod: 'CASH',
+        date: todayStr,
+        recordedBy: options.recordedBy || 'IM LOCATION POS',
+      });
+    }
+
+    // Update related invoice status if exists
+    const relatedInvoice = this.invoices.find(inv => inv.contractId === contract.id);
+    if (relatedInvoice) {
+      relatedInvoice.status = 'UNPAID';
+    }
+
+    this.rentals[contractIndex] = contract;
+    this.saveToStorage();
+    this.syncVehicleStatuses();
+    return contract;
+  }
+
+  // --------------------------------------------------------------------------
+  // TEMPORAL AVAILABILITY & UPCOMING RESERVATION RADAR
+  // --------------------------------------------------------------------------
+
+  // Get all upcoming future reservations for a specific vehicle
+  public getUpcomingReservations(vehicleId: string, fromDate?: string): RentalContract[] {
+    const checkFrom = fromDate || new Date().toISOString().split('T')[0];
+    return this.rentals
+      .filter(r => {
+        if (r.status === 'CANCELLED' || r.status === 'COMPLETED') return false;
+        const matchesCar = r.vehicleId === vehicleId || (r.vehicleIds && r.vehicleIds.includes(vehicleId));
+        if (!matchesCar) return false;
+        // Contracts that start on or after checkFrom
+        return (r.contractType === 'RESERVATION' || r.status === 'RESERVED' || r.startDate >= checkFrom) && r.startDate >= checkFrom;
+      })
+      .sort((a, b) => a.startDate.localeCompare(b.startDate));
+  }
+
+  // Get next upcoming reservation starting from today or a given date
+  public getNextUpcomingReservation(vehicleId: string, fromDate?: string): RentalContract | undefined {
+    const list = this.getUpcomingReservations(vehicleId, fromDate);
+    return list.length > 0 ? list[0] : undefined;
+  }
+
+  // Check if a vehicle is free during an interval, and provide maximum allowed end date before next reservation
+  public getVehicleAvailabilitySchedule(
+    vehicleId: string, 
+    startDate: string, 
+    endDate: string, 
+    excludeContractId?: string
+  ): {
+    isAvailable: boolean;
+    conflictContract?: RentalContract;
+    conflictReason?: string;
+    nextUpcomingReservation?: RentalContract;
+    maxAllowedEndDate?: string;
+    freeDaysBeforeNextRes?: number;
+  } {
+    // Find any contract physically overlapping [startDate, endDate]
+    const conflicting = this.rentals.find(r => {
+      if (r.id === excludeContractId) return false;
+      if (r.status === 'CANCELLED' || r.status === 'COMPLETED') return false;
+      const matchesCar = r.vehicleId === vehicleId || (r.vehicleIds && r.vehicleIds.includes(vehicleId));
+      if (!matchesCar) return false;
+
+      // Overlap: start1 <= end2 && end1 >= start2
+      const contractEnd = r.expectedEndDate;
+      return !(endDate < r.startDate || startDate > contractEnd);
+    });
+
+    // Find next upcoming reservation starting strictly after startDate
+    const upcomingRes = this.getUpcomingReservations(vehicleId, startDate)
+      .find(r => r.id !== excludeContractId && r.startDate > startDate);
+
+    let maxAllowedEndDate: string | undefined = undefined;
+    let freeDaysBeforeNextRes: number | undefined = undefined;
+
+    if (upcomingRes) {
+      maxAllowedEndDate = subtractDaysFromDate(upcomingRes.startDate, 1);
+      freeDaysBeforeNextRes = Math.max(0, getDaysDifference(startDate, upcomingRes.startDate));
+    }
+
+    if (conflicting) {
+      const isRes = conflicting.contractType === 'RESERVATION';
+      const reason = isRes
+        ? `محجوزة مسبقاً من ${conflicting.startDate} إلى ${conflicting.expectedEndDate} للزبون (${conflicting.customerSnapshot?.fullName || 'حجز مؤكد'})`
+        : `قيد الإيجار حالياً من ${conflicting.startDate} إلى ${conflicting.expectedEndDate}`;
+
+      return {
+        isAvailable: false,
+        conflictContract: conflicting,
+        conflictReason: reason,
+        nextUpcomingReservation: upcomingRes,
+        maxAllowedEndDate,
+        freeDaysBeforeNextRes,
+      };
+    }
+
+    return {
+      isAvailable: true,
+      nextUpcomingReservation: upcomingRes,
+      maxAllowedEndDate,
+      freeDaysBeforeNextRes,
+    };
   }
 
   // --------------------------------------------------------------------------

@@ -93,6 +93,11 @@ export const FinanceView: React.FC = () => {
     .filter(r => r.status === 'ACTIVE' || r.status === 'OVERDUE' || r.status === 'RESERVED')
     .reduce((sum, r) => sum + (r.remainingBalanceDzd || 0), 0);
 
+  // Escrow / Security deposits (Cautions sous séquestre)
+  const cautionsInEscrow = rentals
+    .filter(r => r.status === 'ACTIVE' || r.status === 'OVERDUE' || r.status === 'RESERVED')
+    .reduce((sum, r) => sum + (r.cautionDzd || 0), 0);
+
   const netPeriodProfit = totalPeriodIncome - totalPeriodExpenses;
 
   const handleAddExpense = (e: React.FormEvent) => {

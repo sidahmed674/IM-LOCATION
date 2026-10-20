@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { dbStore } from '../../db/store';
+import { getTodayLocalDate, subtractDaysFromDate, getDaysDifference } from '../../utils/dateUtils';
 
 export const DashboardView: React.FC = () => {
   const { 
@@ -19,10 +20,16 @@ export const DashboardView: React.FC = () => {
   const rentals = dbStore.getRentals();
   const finance = dbStore.getFinancialSummary();
 
+  const todayStr = getTodayLocalDate();
   const availableVehicles = vehicles.filter(v => v.status === 'AVAILABLE');
   const rentedVehicles = vehicles.filter(v => v.status === 'RENTED');
   const maintVehicles = vehicles.filter(v => v.status === 'MAINTENANCE');
   const activeRentals = rentals.filter(r => r.status === 'ACTIVE' || r.status === 'OVERDUE');
+  const upcomingReservations = rentals.filter(r => 
+    (r.contractType === 'RESERVATION' || r.status === 'RESERVED') && 
+    r.startDate > todayStr && 
+    r.status !== 'CANCELLED'
+  );
   const totalRemainingBalances = rentals
     .filter(r => r.status === 'ACTIVE' || r.status === 'OVERDUE' || r.status === 'RESERVED')
     .reduce((sum, r) => sum + (r.remainingBalanceDzd || 0), 0);
@@ -249,6 +256,77 @@ export const DashboardView: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Upcoming Future Reservations (Cars Are Available to Rent Before Delivery!) */}
+      {upcomingReservations.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-500/10 via-amber-500/10 to-transparent border border-purple-500/30 dark:border-purple-500/20 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-purple-500/20">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-purple-500" />
+              <h3 className="font-bold text-sm text-neutral-900 dark:text-white font-bukra italic">
+                {language === 'ar' ? 'حجوزات مسبقة قادمة (السيارات شاغرة ومتاحة للكراء الآن حتى موعد التسليم)' : 'Réservations futures (Véhicules disponibles à la location avant livraison)'}
+              </h3>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-600 dark:text-purple-400 font-mono font-bold text-xs self-start sm:self-auto">
+              {upcomingReservations.length} {language === 'ar' ? 'حجز مستقبلي' : 'réservation(s)'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {upcomingReservations.map(res => {
+              const maxDateBeforeRes = subtractDaysFromDate(res.startDate, 1);
+              const daysRemaining = Math.max(0, getDaysDifference(todayStr, res.startDate));
+              const canRentGap = maxDateBeforeRes >= todayStr;
+
+              return (
+                <div
+                  key={res.id}
+                  className="p-3.5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-xs flex flex-col justify-between space-y-2.5 hover:border-amber-400 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-bold text-xs text-neutral-900 dark:text-white font-bukra italic">
+                        {res.vehicleSnapshot?.brand} {res.vehicleSnapshot?.model}
+                      </div>
+                      <div className="font-mono text-[10px] text-neutral-500">
+                        {res.vehicleSnapshot?.matricule}
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] bg-purple-500/15 text-purple-600 dark:text-purple-400 font-bold font-mono">
+                      {daysRemaining} {language === 'ar' ? 'يوم متبقي' : 'j restants'}
+                    </span>
+                  </div>
+
+                  <div className="text-[11px] space-y-1 bg-neutral-50 dark:bg-neutral-800/40 p-2 rounded-lg">
+                    <div className="flex justify-between text-neutral-600 dark:text-neutral-400">
+                      <span>{language === 'ar' ? 'تاريخ الحجز:' : 'Date réservation:'}</span>
+                      <span className="font-mono font-bold text-neutral-900 dark:text-white">{res.startDate}</span>
+                    </div>
+                    <div className="flex justify-between text-neutral-600 dark:text-neutral-400">
+                      <span>{language === 'ar' ? 'الزبون الحائز:' : 'Client:'}</span>
+                      <span className="font-semibold text-neutral-800 dark:text-neutral-200 truncate max-w-[120px]">{res.customerSnapshot?.fullName}</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold border-t border-neutral-200/60 dark:border-neutral-700/60 pt-1">
+                      <span>{language === 'ar' ? 'متاحة تماماً حتى:' : 'Libre jusqu\'au:'}</span>
+                      <span className="font-mono">{maxDateBeforeRes}</span>
+                    </div>
+                  </div>
+
+                  {canRentGap && (
+                    <button
+                      onClick={() => openNewRentalModal(res.vehicleId, 'RENTAL', todayStr, maxDateBeforeRes)}
+                      className="w-full py-1.5 px-3 rounded-lg bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-neutral-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs font-bukra italic"
+                    >
+                      <Key className="w-3.5 h-3.5" />
+                      <span>{language === 'ar' ? `تأجير السيارة حتى ${maxDateBeforeRes}` : `Louer jusqu'au ${maxDateBeforeRes}`}</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

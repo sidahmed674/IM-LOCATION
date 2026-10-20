@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { 
   FileText, Plus, Search, Filter, RotateCcw, 
-  Printer, CheckCircle2, AlertTriangle, Eye, Calendar, DollarSign
+  Printer, CheckCircle2, AlertTriangle, Eye, Calendar, DollarSign, Key
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { dbStore } from '../../db/store';
 import { RentalContract, RentalStatus } from '../../types';
+import { getTodayLocalDate, subtractDaysFromDate, getDaysDifference } from '../../utils/dateUtils';
 
 export const RentalsView: React.FC = () => {
   const { 
@@ -18,8 +19,13 @@ export const RentalsView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContractForDetails, setSelectedContractForDetails] = useState<RentalContract | null>(null);
 
+  const todayStr = getTodayLocalDate();
+
   const filteredRentals = rentals.filter(r => {
-    const matchesStatus = statusFilter === 'ALL' || r.status === statusFilter;
+    let matchesStatus = statusFilter === 'ALL' || r.status === statusFilter;
+    if (statusFilter === 'RESERVED') {
+      matchesStatus = r.contractType === 'RESERVATION' || r.status === 'RESERVED';
+    }
     const matchesSearch = 
       r.contractNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       r.customerSnapshot.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -35,7 +41,10 @@ export const RentalsView: React.FC = () => {
     }).format(n) + ' ' + t.currency;
   };
 
-  const getStatusBadge = (status: RentalStatus) => {
+  const getStatusBadge = (status: RentalStatus, contractType?: string) => {
+    if (contractType === 'RESERVATION' || status === 'RESERVED') {
+      return <span className="text-purple-500 font-semibold">{t.statusReserved}</span>;
+    }
     switch (status) {
       case 'ACTIVE':
         return <span className="text-blue-500 font-semibold">{t.statusActive}</span>;
@@ -80,6 +89,7 @@ export const RentalsView: React.FC = () => {
           {[
             { id: 'ALL', label: t.all },
             { id: 'ACTIVE', label: t.statusActive },
+            { id: 'RESERVED', label: language === 'ar' ? 'حجوزات مسبقة' : 'Réservations' },
             { id: 'OVERDUE', label: t.statusOverdue },
             { id: 'COMPLETED', label: t.statusCompleted },
           ].map(tab => (
@@ -174,11 +184,31 @@ export const RentalsView: React.FC = () => {
                             <AlertTriangle className="w-3 h-3" /> {t.statusOverdue}
                           </span>
                         ) : (
-                          getStatusBadge(contract.status)
+                          getStatusBadge(contract.status, contract.contractType)
                         )}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          {/* Quick Rent Car Before Future Reservation Delivery */}
+                          {(() => {
+                            const isFutureRes = (contract.contractType === 'RESERVATION' || contract.status === 'RESERVED') && contract.startDate > todayStr;
+                            if (!isFutureRes) return null;
+                            const maxDateBeforeRes = subtractDaysFromDate(contract.startDate, 1);
+                            const daysRemaining = Math.max(0, getDaysDifference(todayStr, contract.startDate));
+                            if (maxDateBeforeRes < todayStr) return null;
+
+                            return (
+                              <button
+                                onClick={() => openNewRentalModal(contract.vehicleId, 'RENTAL', todayStr, maxDateBeforeRes)}
+                                className="px-2.5 py-1 rounded bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-neutral-950 font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 shadow-xs font-bukra italic"
+                                title={language === 'ar' ? `كراء السيارة في الفترة الشاغرة حتى ${maxDateBeforeRes}` : `Louer avant réservation jusqu'au ${maxDateBeforeRes}`}
+                              >
+                                <Key className="w-3 h-3" />
+                                <span>{language === 'ar' ? `كراء قبل الحجز (${daysRemaining}j)` : `Louer avant`}</span>
+                              </button>
+                            );
+                          })()}
+
                           {/* If Active -> Show Quick Return Button */}
                           {(contract.status === 'ACTIVE' || contract.status === 'OVERDUE') && (
                             <button
