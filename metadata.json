@@ -1,0 +1,6 @@
+{
+  "name": "IM LOCATION - Car Rental POS & Fleet Management",
+  "description": "نظام احترافي لإدارة وتأجير السيارات ونقاط البيع للسوق الجزائري (DZD, Matricule DZ, عقود ثنائية اللغة، فحص الأضرار والتسوية المالية).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

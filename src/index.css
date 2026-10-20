@@ -1,0 +1,160 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+@variant dark (&:where(.dark, .dark *));
+
+@font-face {
+  font-family: '29LT Bukra';
+  src: local('29LT Bukra Bold Italic'), local('29LTBukra-BoldItalic'), local('29LT Bukra Bold'), local('29LT Bukra');
+  font-weight: 700 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+@theme {
+  --font-bukra: '29LT Bukra', 'Cairo', 'Changa', 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+:root {
+  --font-bukra: '29LT Bukra', 'Cairo', 'Changa', 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+html {
+  font-size: 16.5px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* User Requirement: Global Font -> 29LT Bukra Bold Italic for entire site including numbers */
+html, body, button, input, select, textarea, div, span, p, h1, h2, h3, h4, h5, h6, table, th, td {
+  font-family: '29LT Bukra', 'Cairo', 'Changa', 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+.font-bukra {
+  font-family: '29LT Bukra', 'Cairo', 'Changa', 'Plus Jakarta Sans', system-ui, sans-serif !important;
+  font-weight: 800;
+  font-style: italic;
+}
+
+/* Smooth motion, springy interactions and UI transitions */
+button, a, input, select, textarea {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+button:active {
+  transform: scale(0.95);
+}
+
+button:hover {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 15px 4px rgba(245, 158, 11, 0.2);
+  }
+}
+
+.animate-slide-up {
+  animation: slideInUp 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.animate-glow {
+  animation: pulseGlow 2.5s infinite;
+}
+
+/* Custom scrollbar for desktop feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.45);
+}
+
+/* Print styling for A4 Contracts, Bon de Réservation and Invoices (Strictly 1 Single A4 Page) */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0 !important;
+  }
+  @page :first {
+    margin: 0 !important;
+  }
+  html, body {
+    background: #ffffff !important;
+    color: #111111 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    overflow: hidden !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  header, aside, main, .print\:hidden, #app-navigation, #app-print-iframe {
+    display: none !important;
+  }
+  .print-document-overlay {
+    position: static !important;
+    display: block !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    overflow: hidden !important;
+    box-shadow: none !important;
+  }
+  #printable-contract, #printable-bon-versement, #printable-bon-reservation, #printable-invoice, #printable-restitution-caution, #printable-cloture-a4 {
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 auto !important;
+    padding: 8mm 10mm !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    page-break-after: avoid !important;
+    page-break-before: avoid !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    break-after: avoid !important;
+  }
+}

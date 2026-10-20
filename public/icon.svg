@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#090d16" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="50%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <linearGradient id="accentGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- Background Squircle -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)" />
+  <rect x="12" y="12" width="488" height="488" rx="116" fill="none" stroke="url(#goldGrad)" stroke-width="6" opacity="0.4" />
+
+  <!-- Car Silhouette / Key Graphic -->
+  <g filter="url(#shadow)">
+    <!-- Central Badge -->
+    <circle cx="256" cy="220" r="130" fill="#1e293b" stroke="url(#goldGrad)" stroke-width="8"/>
+    
+    <!-- Stylized Car Front Silhouette -->
+    <path d="M190 240 L210 180 Q256 165 302 180 L322 240 Q335 255 330 275 L320 280 L315 295 L295 295 L292 280 L220 280 L217 295 L197 295 L192 280 L182 275 Q177 255 190 240 Z" fill="url(#goldGrad)"/>
+    
+    <!-- Windshield -->
+    <path d="M216 230 L228 190 Q256 180 284 190 L296 230 Z" fill="#0f172a"/>
+    
+    <!-- Headlights -->
+    <circle cx="205" cy="255" r="8" fill="#ffffff" />
+    <circle cx="307" cy="255" r="8" fill="#ffffff" />
+    <line x1="230" y1="260" x2="282" y2="260" stroke="#0f172a" stroke-width="4" stroke-linecap="round"/>
+  </g>
+
+  <!-- Brand Typography -->
+  <text x="256" y="395" text-anchor="middle" font-family="'29LT Bukra', 'Cairo', 'Impact', sans-serif" font-weight="900" font-style="italic" font-size="52" fill="#ffffff" letter-spacing="2">
+    IM LOCATION
+  </text>
+  
+  <g transform="translate(186, 420)">
+    <rect width="140" height="28" rx="14" fill="url(#goldGrad)" />
+    <text x="70" y="19" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-weight="bold" font-size="14" fill="#0f172a" letter-spacing="1.5">
+      DESKTOP POS
+    </text>
+  </g>
+</svg>
